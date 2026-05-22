@@ -2,7 +2,6 @@ package com.projectyukti.yukti.chat
 
 import ChatViewModel
 import android.app.Activity
-
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -13,10 +12,28 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.EaseInOut
+import androidx.compose.animation.core.EaseOut
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.magnifier
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
@@ -24,41 +41,43 @@ import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.AdfScanner
 import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.material3.ripple
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.projectyukti.yukti.MainActivity
-
-
 import com.projectyukti.yukti.chat.components.ChatHeader
-import com.projectyukti.yukti.chat.components.menu.DrawerBody
-import com.projectyukti.yukti.chat.components.menu.DrawerHeader
 import com.projectyukti.yukti.chat.components.menu.NavDrawerItems
 import com.projectyukti.yukti.navigation.Routes
 import com.projectyukti.yukti.navigation.isKeyboardOpen
@@ -79,106 +98,77 @@ import com.projectyukti.yukti.createbusiness.ExportChatData
 import geminiImagePrompt
 import getChatDateLabel
 import getChatTime
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
+
+// ── Drawer color tokens ──────────────────────────────────
+private val DrawerBg          = Color(0xFF0D1117)
+private val DrawerSurface     = Color(0xFF161B22)
+private val DrawerCard        = Color(0xFF1C2433)
+private val DrawerBorder      = Color(0xFF30363D)
+private val DrawerTeal        = Color(0xFF2DD4BF)
+private val DrawerTealDim     = Color(0xFF14B8A6)
+private val DrawerTealGlow    = Color(0x1A2DD4BF)
+private val DrawerBlueSky     = Color(0xFF0EA5E9)
+private val DrawerTextPrimary = Color(0xFFE6EDF3)
+private val DrawerTextMuted   = Color(0xFF8B949E)
+private val DrawerTextFaint   = Color(0xFF484F58)
+private val DrawerScrim       = Color(0xCC000000)
+// ─────────────────────────────────────────────────────────
 
 @Composable
 fun ChatPage(
     chatViewModel: ChatViewModel,
-    googleAuthUiClient: GoogleAuthUiClient
-    ,
+    googleAuthUiClient: GoogleAuthUiClient,
     navController: NavHostController,
-    innerPadding : PaddingValues
-
+    innerPadding: PaddingValues
 ) {
-
     var isKeyboardVisible by remember { mutableStateOf(false) }
     isKeyboardVisible = isKeyboardOpen()
-    Log.d("Keyboard open?", isKeyboardVisible.toString())
 
+    val defaultPadding = PaddingValues(bottom = 0.dp)
+    val innerKeyboardPadding = if (isKeyboardVisible) defaultPadding else innerPadding
 
-    var defaultPadding: PaddingValues = PaddingValues( bottom = 0.dp)
-
-    val innerKeyboardPadding = if (isKeyboardVisible) {
-        defaultPadding // Use the default padding when the keyboard is visible
-    } else {
-        innerPadding // Use the default padding when the keyboard is not visible
-    }
-
-    val subscriptionViewModel= SubscriptionViewModel()
+    val subscriptionViewModel = SubscriptionViewModel()
     RequestNotificationPermission()
     val context = LocalContext.current
 
     val isSubscribed by subscriptionViewModel.isSubscribed.collectAsState()
-    var businessName = subscriptionViewModel.businessName.value
     var businessId by remember { mutableStateOf("") }
     val currentUserUid = FirebaseAuth.getInstance().currentUser?.uid ?: ""
     val subscriptionChecker = SubscriptionChecker(context)
 
-
-
-
     LaunchedEffect(Unit) {
-        val (isSubscribed, businessName , businessId ) = subscriptionChecker.checkSubscription()
-
-        // Check if the values are being fetched correctly
-        Log.d("ChatPage", "Fetched isSubscribed: $isSubscribed, businessName: $businessName")
-
-        // Save to the singleton
+        val (isSubscribed, businessName, businessId) = subscriptionChecker.checkSubscription()
         SubscriptionCache.isSubscribed = isSubscribed
-        subscriptionViewModel.setSubscriptionStatus(isSubscribed) // Ensure this method is called
-        Log.d("ChatPage", "Saved isSubscribed to Cache: ${SubscriptionCache.isSubscribed}")
-
-        // Set business name
+        subscriptionViewModel.setSubscriptionStatus(isSubscribed)
         SubscriptionCache.businessName = businessName
-        subscriptionViewModel.setBusinessName(businessName.toString()) // Make sure it's set properly
-        Log.d("ChatPage", "Saved businessName to Cache: ${SubscriptionCache.businessName}")
-
+        subscriptionViewModel.setBusinessName(businessName.toString())
         SubscriptionCache.businessId = businessId
-        subscriptionViewModel.setBusinessId(businessId.toString()) // Make sure it's set properly
-        Log.d("ChatPage", "Saved businessId to Cache: ${SubscriptionCache.businessId}")
-
+        subscriptionViewModel.setBusinessId(businessId.toString())
     }
 
+    val sharedViewModel: SharedViewModel = viewModel()
 
-
-
-
-    val sharedViewModel: SharedViewModel = viewModel() // Using ViewModelProvider
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    // ── Custom drawer state (replaces ModalNavigationDrawer) ──
+    var drawerOpen by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-//
-//// Store the drawerState and scope in the ViewModel
-//    sharedViewModel.drawerState = drawerState
-//    sharedViewModel.scope = scope
-
 
     val errorState by chatViewModel.errorState.collectAsState()
-
-
     val chatId = FirebaseAuth.getInstance().currentUser?.uid ?: "default_chat"
-    val onSignOut = rememberCoroutineScope() // Move the rememberCoroutineScope here
+    val onSignOut = rememberCoroutineScope()
     val ttsHelper = remember { TTSHelper(context) }
 
     val signOutAction = {
-        // Use the coroutine scope here
         onSignOut.launch {
             try {
-                googleAuthUiClient.signOut() // Call your suspend sign-out function
-
-
-                // Show the success message
+                googleAuthUiClient.signOut()
                 Toast.makeText(context, "Signed Out", Toast.LENGTH_SHORT).show()
-
-                // Kill the current activity and navigate to GoogleAuthUiClient (login activity)
-
                 val intent = Intent(context, MainActivity::class.java)
                 context.startActivity(intent)
                 (context as? Activity)?.finish()
                 clearSubscriptionDetails(context)
-
-                // Finish the current activity to prevent going back to it after sign-out
-
             } catch (e: Exception) {
                 Toast.makeText(context, "Sign out failed: ${e.message}", Toast.LENGTH_SHORT).show()
             }
@@ -186,8 +176,11 @@ fun ChatPage(
     }
 
     LaunchedEffect(chatId) {
-        chatViewModel.onChatScreenOpened(chatId,getSubscriptionDetails(context).third,getSubscriptionDetails(context).second.toString())
-        Log.d("premiumUsers", getSubscriptionDetails(context).first.toString())
+        chatViewModel.onChatScreenOpened(
+            chatId,
+            getSubscriptionDetails(context).third,
+            getSubscriptionDetails(context).second.toString()
+        )
     }
 
     LaunchedEffect(errorState) {
@@ -198,205 +191,475 @@ fun ChatPage(
     }
 
     DisposableEffect(context) {
-        onDispose {
-            ttsHelper.shutdown()  // Release resources
-        }
-    }
-    LaunchedEffect(drawerState.isOpen) {
-        if (drawerState.isOpen) {
-
-
-
-            // Trigger specific actions when the drawer opens
-            Log.d("Drawer", "Drawer opened")
-            // You can add any specific actions here, like refreshing data
-        } else {
-            // Trigger actions when the drawer is closed
-            Log.d("Drawer", "Drawer closed")
-        }
+        onDispose { ttsHelper.shutdown() }
     }
 
-
-    // Retaining navItems based on subscription status
-    val navItems = remember(getSubscriptionDetails(context)
-
-    ) {
-        Log.d("items",getSubscriptionDetails(context).toString())
+    val navItems = remember(getSubscriptionDetails(context)) {
         if (getSubscriptionDetails(context).first) {
             listOf(
                 NavDrawerItems(
-                    getSubscriptionDetails(context).second.toString(), // Use `orEmpty` to avoid null value
+                    getSubscriptionDetails(context).second.toString(),
                     getSubscriptionDetails(context).second.toString(),
                     "Go to Manage business page",
                     icon = Icons.Default.Business
                 ),
-                NavDrawerItems(
-                    "Business Members",
-                    "Business Members",
-                    "View Member List",
-                    icon = Icons.Default.AccountCircle
-                ),
-                NavDrawerItems(
-                    "Generate a bill",
-                    "Generate a bill",
-                    "Generate a bill",
-                    icon = Icons.Default.AdfScanner
-                ),
-
+                NavDrawerItems("Business Members", "Business Members", "View Member List", icon = Icons.Default.AccountCircle),
+                NavDrawerItems("Generate a bill", "Generate a bill", "Generate a bill", icon = Icons.Default.AdfScanner),
             )
-        }
-        else if (!getSubscriptionDetails(context).first && getSubscriptionDetails(context).second != null){
-
+        } else if (!getSubscriptionDetails(context).first && getSubscriptionDetails(context).second != null) {
             listOf(
                 NavDrawerItems(
-                    getSubscriptionDetails(context).second.toString(), // Use `orEmpty` to avoid null value
+                    getSubscriptionDetails(context).second.toString(),
                     getSubscriptionDetails(context).second.toString(),
                     "Go to Manage business page",
                     icon = Icons.Default.Business
                 ),
-                NavDrawerItems(
-                    "Business Members",
-                    "Business Members",
-                    "View Member List",
-                    icon = Icons.Default.AccountCircle
-                ),
-                NavDrawerItems(
-                    "Export Chat data",
-                    "Export Chat data",
-                    "Export Chat data",
-                    icon = Icons.Default.AdfScanner
-                ),
-
-                )
-        }
-
-        else {
+                NavDrawerItems("Business Members", "Business Members", "View Member List", icon = Icons.Default.AccountCircle),
+                NavDrawerItems("Export Chat data", "Export Chat data", "Export Chat data", icon = Icons.Default.AdfScanner),
+            )
+        } else {
             listOf(
-                NavDrawerItems(
-                    "Create a Business",
-                    "Create a Business",
-                    "Go to Create a Business page",
-                    icon = Icons.Default.Create
-                ),
-                NavDrawerItems(
-                    "Join a Business",
-                    "Join a Business",
-                    "Go to Join a Business page",
-                    icon = Icons.Default.AddCircle
-                )
+                NavDrawerItems("Create a Business", "Create a Business", "Go to Create a Business page", icon = Icons.Default.Create),
+                NavDrawerItems("Join a Business", "Join a Business", "Go to Join a Business page", icon = Icons.Default.AddCircle)
             )
         }
     }
 
+    // ── Root Box: stacks drawer ON TOP of content ──────────
+    Box(modifier = Modifier.fillMaxSize()) {
 
+        // ── Main content ────────────────────────────────────
+        Column(modifier = Modifier.fillMaxSize()) {
+            ChatHeader(
+                onSignOut = signOutAction,
+                navItems = navItems,
+                onNavigationIconClick = { drawerOpen = !drawerOpen }
+            )
+            Box(modifier = Modifier.padding(start = 10.dp, end = 10.dp)) {
+                Column(modifier = Modifier.padding(innerKeyboardPadding)) {
+                    MessageList(
+                        modifier = Modifier.weight(1f),
+                        messageList = chatViewModel.messageList
+                    )
+                    MessageInput(
+                        onMessageSend = {
+                            chatViewModel.sendMessage(
+                                chatId, it,
+                                getSubscriptionDetails(context).third,
+                                getSubscriptionDetails(context).second.toString(),
+                                context
+                            )
+                        },
+                        context,
+                        getSubscriptionDetails(context).third.toString(),
+                        getSubscriptionDetails(context).second.toString(),
+                        currentUserUid, chatViewModel, chatId
+                    )
+                }
+            }
+        }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            Column(
-                modifier = Modifier.fillMaxSize()
-                .fillMaxHeight()
-                .background(Color.Gray) // Optional semi-transparent background
-
-            ) {
-            DrawerHeader()
-
-            DrawerBody(
-                items = navItems,
-                onItemClick = { item ->
-
-                    when (item.title) {
-
-                        "Generate a bill"->{
-
-                         ExportChatData().exportChatData(context,chatViewModel.messageList.toString())
-
-                            }
-
-                        "Business Members"->{
-                            navController.navigate(Routes.businessMembers){
-                                popUpTo(navController.graph.startDestinationId)
-                            }}
-                        "Create a Business" -> {
-                            navController.navigate(Routes.subscriptionPage){
-                                popUpTo(navController.graph.startDestinationId)
-                            }
-
-                        }"Join a Business" -> {
-                        navController.navigate(Routes.joinBusiness)
-
+        // ── Premium animated drawer overlay ─────────────────
+        PremiumDrawer(
+            isOpen = drawerOpen,
+            navItems = navItems,
+            currentUser = FirebaseAuth.getInstance().currentUser,
+            businessName = getSubscriptionDetails(context).second?.toString() ?: "",
+            isSubscribed = getSubscriptionDetails(context).first,
+            onClose = { drawerOpen = false },
+            onSignOut = {
+                drawerOpen = false
+                signOutAction()
+            },
+            onItemClick = { item ->
+                drawerOpen = false
+                when (item.title) {
+                    "Generate a bill" -> ExportChatData().exportChatData(context, chatViewModel.messageList.toString())
+                    "Business Members" -> navController.navigate(Routes.businessMembers) {
+                        popUpTo(navController.graph.startDestinationId)
                     }
-                        else -> {
-                            Log.d("items",item.title)
-                            Toast.makeText(context, "Clicked: ${item.title}", Toast.LENGTH_SHORT).show()
+                    "Create a Business" -> navController.navigate(Routes.subscriptionPage) {
+                        popUpTo(navController.graph.startDestinationId)
+                    }
+                    "Join a Business" -> navController.navigate(Routes.joinBusiness)
+                    else -> Toast.makeText(context, "Clicked: ${item.title}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────
+//  PREMIUM DRAWER COMPOSABLE
+// ─────────────────────────────────────────────────────────
+
+@Composable
+fun PremiumDrawer(
+    isOpen: Boolean,
+    navItems: List<NavDrawerItems>,
+    currentUser: com.google.firebase.auth.FirebaseUser?,
+    businessName: String,
+    isSubscribed: Boolean,
+    onClose: () -> Unit,
+    onSignOut: () -> Unit,
+    onItemClick: (NavDrawerItems) -> Unit
+) {
+    // Scrim alpha animation
+    val scrimAlpha by animateFloatAsState(
+        targetValue = if (isOpen) 1f else 0f,
+        animationSpec = tween(320, easing = EaseInOut),
+        label = "scrimAlpha"
+    )
+
+    // Drawer slide offset animation
+    val drawerOffset by animateDpAsState(
+        targetValue = if (isOpen) 0.dp else (-320).dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessMedium
+        ),
+        label = "drawerOffset"
+    )
+
+    if (scrimAlpha > 0f || isOpen) {
+        Box(modifier = Modifier.fillMaxSize()) {
+
+            // ── Scrim ──────────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .alpha(scrimAlpha)
+                    .background(DrawerScrim)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) { onClose() }
+            )
+
+            // ── Drawer panel ───────────────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(300.dp)
+                    .offset(x = drawerOffset)
+                    .background(DrawerBg)
+            ) {
+                // Subtle ambient glow behind panel
+                Box(
+                    modifier = Modifier
+                        .size(260.dp)
+                        .align(Alignment.TopCenter)
+                        .offset(y = (-40).dp)
+                        .background(
+                            brush = Brush.radialGradient(
+                                colors = listOf(DrawerTealGlow, Color.Transparent)
+                            ),
+                            shape = CircleShape
+                        )
+                        .blur(48.dp)
+                )
+
+                Column(modifier = Modifier.fillMaxSize()) {
+
+                    // ── Header ─────────────────────────────
+                    DrawerPremiumHeader(
+                        currentUser = currentUser,
+                        businessName = businessName,
+                        isSubscribed = isSubscribed,
+                        onClose = onClose
+                    )
+
+                    HorizontalDivider(color = DrawerBorder, thickness = 1.dp)
+
+                    // ── Nav Items ──────────────────────────
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = 12.dp)
+                    ) {
+                        navItems.forEachIndexed { index, item ->
+                            // Staggered entrance per item
+                            var itemVisible by remember { mutableStateOf(false) }
+                            LaunchedEffect(isOpen) {
+                                if (isOpen) {
+                                    delay((60 + index * 60).toLong())
+                                    itemVisible = true
+                                } else {
+                                    itemVisible = false
+                                }
+                            }
+
+                            AnimatedVisibility(
+                                visible = itemVisible,
+                                enter = fadeIn(tween(240)) + slideInHorizontally(
+                                    initialOffsetX = { -40 },
+                                    animationSpec = tween(280, easing = EaseOut)
+                                ),
+                                exit = fadeOut(tween(120))
+                            ) {
+                                DrawerNavItem(
+                                    item = item,
+                                    onClick = { onItemClick(item) }
+                                )
+                            }
                         }
                     }
 
-                    scope.launch{
-                        drawerState.close()
-                    }
+                    HorizontalDivider(color = DrawerBorder, thickness = 1.dp)
+
+                    // ── Sign Out ───────────────────────────
+                    DrawerSignOutButton(onSignOut = onSignOut)
                 }
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────
+//  DRAWER HEADER
+// ─────────────────────────────────────────────────────────
+
+@Composable
+fun DrawerPremiumHeader(
+    currentUser: com.google.firebase.auth.FirebaseUser?,
+    businessName: String,
+    isSubscribed: Boolean,
+    onClose: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(DrawerSurface, DrawerBg)
+                )
             )
-        }}
+            .padding(20.dp)
     ) {
+        // Close button top-right
+        IconButton(
+            onClick = onClose,
+            modifier = Modifier
+                .padding(0.dp,20.dp,0.dp,0.dp)
+                .align(Alignment.TopEnd)
+                .size(32.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Close drawer",
+                tint = DrawerTextMuted,
+                modifier = Modifier.size(18.dp)
 
-        Column(modifier = Modifier) {
-            ChatHeader(onSignOut = signOutAction,
-                navItems = navItems,
-                onNavigationIconClick = {
-                    scope.launch {
-                        if (drawerState.isClosed) drawerState.open() else drawerState.close()
-                    }
-                }
             )
+        }
 
+        Column(modifier = Modifier.padding(top = 4.dp)) {
+            // Avatar circle with gradient + initials
             Box(
                 modifier = Modifier
-
-                    .padding(start = 10.dp, end = 10.dp)// Respect system bars
+                    .padding(0.dp,20.dp,0.dp,0.dp)
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(DrawerTealDim, DrawerBlueSky),
+                            start = Offset(0f, 0f),
+                            end = Offset(56f, 56f)
+                        )
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                Column(
-                    modifier = Modifier.padding(innerKeyboardPadding)
+                Text(
+                    text = currentUser?.displayName?.firstOrNull()?.uppercase() ?: "Y",
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+            }
 
+            Spacer(Modifier.height(12.dp))
 
+            Text(
+                text = currentUser?.displayName ?: "Yukti User",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = DrawerTextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
 
+            Text(
+                text = currentUser?.email ?: "",
+                fontSize = 12.sp,
+                color = DrawerTextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            if (businessName.isNotBlank()) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(DrawerCard)
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
-                    // Message list adjusts dynamically to keyboard
-                    MessageList(
+                    Box(
                         modifier = Modifier
-                            .weight(1f),
-                        messageList = chatViewModel.messageList
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(if (isSubscribed) DrawerTeal else DrawerTextMuted)
                     )
-
-                    // Message input stays above the keyboard
-                    MessageInput(
-                        onMessageSend = {
-                            chatViewModel.sendMessage(chatId, it,getSubscriptionDetails(context).third,getSubscriptionDetails(context).second.toString(),context)
-                        },
-                        context,
-                        getSubscriptionDetails(context).third.toString(),getSubscriptionDetails(context).second.toString(),currentUserUid,chatViewModel,chatId
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = businessName,
+                        fontSize = 11.sp,
+                        color = if (isSubscribed) DrawerTeal else DrawerTextMuted,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
         }
     }
-
-
 }
+
+// ─────────────────────────────────────────────────────────
+//  DRAWER NAV ITEM
+// ─────────────────────────────────────────────────────────
+
+@Composable
+fun DrawerNavItem(
+    item: NavDrawerItems,
+    onClick: () -> Unit
+) {
+    var pressed by remember { mutableStateOf(false) }
+    val bgAlpha by animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
+        animationSpec = tween(120),
+        label = "itemBg"
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = tween(100),
+        label = "itemScale"
+    )
+
+
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 3.dp)
+            .scale(scale)
+            .clip(RoundedCornerShape(10.dp))
+            .background(DrawerCard.copy(alpha = bgAlpha))
+            .clickable(
+                indication = ripple(color = DrawerTeal),
+                interactionSource = remember { MutableInteractionSource() }
+            ) {
+                onClick()
+            }
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Icon container with teal tint
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(DrawerTealGlow),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = item.icon,
+                contentDescription = item.title,
+                tint = DrawerTeal,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        Spacer(Modifier.width(14.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = item.title,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = DrawerTextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (item.contentDescription.isNotBlank()) {
+                Text(
+                    text = item.contentDescription,
+                    fontSize = 11.sp,
+                    color = DrawerTextMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        Icon(
+            imageVector = Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = DrawerTextFaint,
+            modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────
+//  SIGN OUT BUTTON
+// ─────────────────────────────────────────────────────────
+
+@Composable
+fun DrawerSignOutButton(onSignOut: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                indication = ripple(color = Color(0xFFFF6B6B)),
+                interactionSource = remember { MutableInteractionSource() }
+            ) { onSignOut() }
+            .padding(horizontal = 26.dp, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.Logout,
+            contentDescription = "Sign out",
+            tint = Color(0xFFFF6B6B),
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(Modifier.width(14.dp))
+        Text(
+            text = "Sign out",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color(0xFFFF6B6B)
+        )
+    }
+}
+
+
+// ─────────────────────────────────────────────────────────
+//  REST OF YOUR ORIGINAL COMPOSABLES — UNCHANGED
+// ─────────────────────────────────────────────────────────
 
 @Composable
 fun MessageList(modifier: Modifier = Modifier, messageList: List<MessageModel>) {
     LazyColumn(
         modifier = modifier,
-        reverseLayout = true // Start from the bottom like chat apps
+        reverseLayout = true
     ) {
         var lastDateLabel: String? = null
         items(messageList.reversed()) { message ->
             val currentDateLabel = getChatDateLabel(message.timestamp)
-
-
             MessaageRow(messageModel = message)
-            // 👇 Show date header only when date changes
             if (currentDateLabel != lastDateLabel) {
                 DateHeader(date = currentDateLabel)
                 lastDateLabel = currentDateLabel
@@ -408,13 +671,8 @@ fun MessageList(modifier: Modifier = Modifier, messageList: List<MessageModel>) 
 @Composable
 fun MessaageRow(messageModel: MessageModel) {
     val isModel = messageModel.role == "model"
-    Log.d("messageTimeStamp" ,messageModel.timestamp)
-    Row(
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.fillMaxWidth()
-        ) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier
                     .align(if (isModel) Alignment.BottomStart else Alignment.BottomEnd)
@@ -422,29 +680,23 @@ fun MessaageRow(messageModel: MessageModel) {
                         start = if (isModel) 8.dp else 70.dp,
                         end = if (isModel) 70.dp else 8.dp,
                         top = 8.dp,
-
                     )
                     .clip(RoundedCornerShape(38f))
                     .background(if (isModel) ColorModelMessage else ColorUserMessage)
-                    .padding( 10.dp,5.dp)
+                    .padding(10.dp, 5.dp)
             ) {
-                Text(
-                    text = messageModel.message,
-                    color = Color.White
-
-                )
-
+                Text(text = messageModel.message, color = Color.White)
                 Text(
                     text = getChatTime(messageModel.timestamp),
                     fontSize = 10.sp,
                     color = Color.White.copy(alpha = 0.7f),
                     modifier = Modifier.align(Alignment.End)
                 )
-                Log.d("messageTimeStampAfterConversion" ,getChatTime(messageModel.timestamp))
             }
         }
     }
 }
+
 @Composable
 fun DateHeader(date: String) {
     Box(
@@ -453,14 +705,9 @@ fun DateHeader(date: String) {
             .padding(vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = date,
-            fontSize = 12.sp,
-            color = Color.Gray
-        )
+        Text(text = date, fontSize = 12.sp, color = Color.Gray)
     }
 }
-
 
 @Composable
 fun MessageInput(
@@ -474,27 +721,26 @@ fun MessageInput(
 ) {
     var photoBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showGeminiPrompt by remember { mutableStateOf(false) }
-    // Gemini Prompt Trigger
-    if (showGeminiPrompt && photoBitmap != null) {
 
-        geminiImagePrompt(photoBitmap!!,chatViewModel,businessId,businessName,chatId)
-        
-        showGeminiPrompt = false // Reset the trigger after invoking Gemini
+    if (showGeminiPrompt && photoBitmap != null) {
+        geminiImagePrompt(photoBitmap!!, chatViewModel, businessId, businessName, chatId)
+        showGeminiPrompt = false
     }
-    // Launcher for the camera intent
+
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             photoBitmap = result.data?.extras?.get("data") as? Bitmap
-            showGeminiPrompt = true // Trigger Gemini prompt in a composable-safe way
+            showGeminiPrompt = true
             Toast.makeText(context, "Photo captured successfully", Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(context, "Camera action canceled", Toast.LENGTH_SHORT).show()
         }
     }
+
     var message by remember { mutableStateOf("") }
-    // Intent to capture speech
+
     val speechRecognizerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -502,8 +748,7 @@ fun MessageInput(
             val spokenText = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.get(0)
             if (!spokenText.isNullOrEmpty()) {
                 message = spokenText
-
-                onMessageSend(message)// Send the message after speech-to-text
+                onMessageSend(message)
                 message = ""
             }
         }
@@ -513,23 +758,18 @@ fun MessageInput(
         modifier = Modifier
             .padding(8.dp)
             .imePadding()
-
-
             .fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
-
     ) {
         OutlinedTextField(
             modifier = Modifier.weight(1f),
             value = message,
             onValueChange = { message = it },
             label = { Text("Type a message") },
-            shape = RoundedCornerShape(20.dp) ,
+            shape = RoundedCornerShape(20.dp),
             leadingIcon = {
                 IconButton(onClick = {
                     if (CameraPermission().checkAndRequestPermission(context as Activity)) {
-
-                        // Handle camera button click (e.g., open camera)
                         val cameraIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
                         try {
                             cameraLauncher.launch(cameraIntent)
@@ -539,19 +779,12 @@ fun MessageInput(
                     } else {
                         Toast.makeText(context, "Permission not granted", Toast.LENGTH_SHORT).show()
                     }
-
                 }) { }
-                    Icon(
-                        imageVector = Icons.Default.CameraAlt,
-                        contentDescription = "Camera"
-                    )
-
-
+                Icon(imageVector = Icons.Default.CameraAlt, contentDescription = "Camera")
             },
             trailingIcon = {
                 IconButton(onClick = {
-                    if (MicrophonePermission().checkAndRequestPermission(context as Activity)){
-                        // Handle microphone button click (e.g., start voice input)
+                    if (MicrophonePermission().checkAndRequestPermission(context as Activity)) {
                         if (SpeechRecognizer.isRecognitionAvailable(context)) {
                             val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -560,35 +793,23 @@ fun MessageInput(
                             }
                             speechRecognizerLauncher.launch(intent)
                         } else {
-                            Toast.makeText(context, "Speech Recognition not available", Toast.LENGTH_SHORT).show()}
-                    }else{
+                            Toast.makeText(context, "Speech Recognition not available", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
                         Toast.makeText(context, "Permission not granted", Toast.LENGTH_SHORT).show()
                     }
-
-
                 }) {
-                    Icon(
-                        imageVector = Icons.Default.Mic,
-                        contentDescription = "Microphone"
-                    )
+                    Icon(imageVector = Icons.Default.Mic, contentDescription = "Microphone")
                 }
-            },
+            }
         )
         IconButton(onClick = {
             if (message.isNotBlank()) {
-
                 onMessageSend(message)
-                message = "" // Clear the message after sending
+                message = ""
             }
         }) {
             Icon(imageVector = Icons.Default.Send, contentDescription = "Send Message")
         }
     }
-
-
-
 }
-
-
-
-
