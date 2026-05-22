@@ -2,192 +2,209 @@ package com.projectyukti.yukti.Home
 
 import ChatViewModel
 import android.util.Log
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import coil.compose.rememberImagePainter
-
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.LocalContext
 import com.projectyukti.yukti.subscription.SubscriptionCache
 import com.projectyukti.yukti.subscription.SubscriptionCache.getSubscriptionDetails
 import com.projectyukti.yukti.subscription.SubscriptionChecker
 import com.projectyukti.yukti.subscription.SubscriptionViewModel
 
+private val HomeBg = Color(0xFF0B1220)
+private val CardBg = Color(0xFF121A2A)
+private val CardBgSecondary = Color(0xFF182235)
+private val BorderColor = Color(0xFF263042)
+private val Accent = Color(0xFF2DD4BF)
+private val AccentBlue = Color(0xFF60A5FA)
+private val TextPrimary = Color(0xFFE5ECF6)
+private val TextSecondary = Color(0xFF94A3B8)
+private val Danger = Color(0xFFFB7185)
+private val Warning = Color(0xFFF59E0B)
 
 @Composable
 fun HomePage(modifier: Modifier = Modifier) {
     val chatViewModel: ChatViewModel = viewModel()
     val context = LocalContext.current
 
-    // Directly accessing the State in the ViewModel
     val inventoryResult = chatViewModel.inventoryResult.value
-    // Collect isLoading state reactively
-    val isLoadingState = chatViewModel.isLoading.collectAsState()
-    val isLoading = isLoadingState.value
-    val subscriptionViewModel= SubscriptionViewModel()
+    val isLoading by chatViewModel.isLoading.collectAsState()
+
+    val subscriptionViewModel = SubscriptionViewModel()
     val subscriptionChecker = SubscriptionChecker(context)
+
     LaunchedEffect(Unit) {
-        val (isSubscribed, businessName , businessId ) = subscriptionChecker.checkSubscription()
+        val (isSubscribed, businessName, businessId) = subscriptionChecker.checkSubscription()
 
-        // Check if the values are being fetched correctly
-        Log.d("ChatPage", "Fetched isSubscribed: $isSubscribed, businessName: $businessName")
-
-        // Save to the singleton
         SubscriptionCache.isSubscribed = isSubscribed
-        subscriptionViewModel.setSubscriptionStatus(isSubscribed) // Ensure this method is called
-        Log.d("ChatPage", "Saved isSubscribed to Cache: ${SubscriptionCache.isSubscribed}")
+        subscriptionViewModel.setSubscriptionStatus(isSubscribed)
 
-        // Set business name
         SubscriptionCache.businessName = businessName
-        subscriptionViewModel.setBusinessName(businessName.toString()) // Make sure it's set properly
-        Log.d("ChatPage", "Saved businessName to Cache: ${SubscriptionCache.businessName}")
+        subscriptionViewModel.setBusinessName(businessName.toString())
 
         SubscriptionCache.businessId = businessId
-        subscriptionViewModel.setBusinessId(businessId.toString()) // Make sure it's set properly
-        Log.d("ChatPage", "Saved businessId to Cache: ${SubscriptionCache.businessId}")
-
+        subscriptionViewModel.setBusinessId(businessId.toString())
     }
 
-    // Trigger loading when the page is first displayed
     LaunchedEffect(Unit) {
-        chatViewModel.loadMessagesAndFetchInventory(getSubscriptionDetails(context).third, getSubscriptionDetails(context).second.toString(), context)
+        chatViewModel.loadMessagesAndFetchInventory(
+            getSubscriptionDetails(context).third,
+            getSubscriptionDetails(context).second.toString(),
+            context
+        )
     }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState()) // Enable scrolling
-            .padding(20.dp),
-        verticalArrangement = Arrangement.SpaceBetween
+            .background(HomeBg)
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp,30.dp)
+            ,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Big Card at the Top
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 20.dp, top = 20.dp)
-                .clickable { },
-            elevation = CardDefaults.cardElevation(4.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(text = "Inventory Status", style = MaterialTheme.typography.headlineMedium)
+        InventoryHeroCard(
+            isLoading = isLoading,
+            inventoryResult = inventoryResult
+        )
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                if (isLoading) {
-                    Text(text = "Loading inventory details....")
-                } else {
-                    Text(
-                        text = inventoryResult ?: "Your inventory is empty",
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-        }
-
-        // Three Cards at the Bottom
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            repeat(3) {
-                Card(
-                    modifier = Modifier
-                        .size(width = 110.dp, height = 125.dp)
-                        .clickable { },
-                    elevation = CardDefaults.cardElevation(4.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Name: Yukti",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                }
-            }
-        }
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            repeat(3) {
-                Card(
-                    modifier = Modifier
-                        .size(width = 110.dp, height = 125.dp)
-                        .clickable { },
-                    elevation = CardDefaults.cardElevation(4.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Name: Yukti",
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                }
-            }
+            StatCard(
+                modifier = Modifier.weight(1f),
+                title = "Tracked",
+                value = "248",
+                subtitle = "items"
+            )
+            StatCard(
+                modifier = Modifier.weight(1f),
+                title = "Low Stock",
+                value = "12",
+                subtitle = "needs refill",
+                accentColor = Warning
+            )
+            StatCard(
+                modifier = Modifier.weight(1f),
+                title = "Alerts",
+                value = "3",
+                subtitle = "priority",
+                accentColor = Danger
+            )
         }
 
-        // Big Card at the Top
-        Card(
+        InsightCard(
+            title = "AI Insight",
+            content = inventoryResult?.takeIf { it.isNotBlank() }
+                ?: "No inventory insight available right now."
+        )
+
+        InsightCard(
+            title = "Business Status",
+            content = buildString {
+                append("Business: ")
+                append(getSubscriptionDetails(context).second ?: "Not connected")
+                append("\n")
+                append("Subscription: ")
+                append(if (getSubscriptionDetails(context).first) "Active" else "Inactive")
+            }
+        )
+    }
+}
+
+@Composable
+private fun InventoryHeroCard(
+    isLoading: Boolean,
+    inventoryResult: String?
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 20.dp, top = 20.dp)
-                .clickable { },
-            elevation = CardDefaults.cardElevation(4.dp)
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Accent.copy(alpha = 0.18f),
+                            AccentBlue.copy(alpha = 0.10f),
+                            CardBg
+                        )
+                    )
+                )
+                .padding(20.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                repeat(6) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Inventory Health",
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Text(
+                    text = "Overview",
+                    color = TextPrimary,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                if (isLoading) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = Accent
+                        )
+                        Text(
+                            text = "Analyzing inventory with AI...",
+                            color = TextSecondary,
+                            fontSize = 14.sp
+                        )
+                    }
+                } else {
                     Text(
-                        text = "Your inventory is empty",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = inventoryResult ?: "Your inventory is currently empty.",
+                        color = TextPrimary,
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp
                     )
                 }
             }
@@ -195,5 +212,78 @@ fun HomePage(modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
+private fun StatCard(
+    modifier: Modifier = Modifier,
+    title: String,
+    value: String,
+    subtitle: String,
+    accentColor: Color = Accent
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBgSecondary),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(width = 28.dp, height = 4.dp)
+                    .background(accentColor, RoundedCornerShape(100))
+            )
+            Text(
+                text = title,
+                color = TextSecondary,
+                fontSize = 12.sp
+            )
+            Text(
+                text = value,
+                color = TextPrimary,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = subtitle,
+                color = TextSecondary,
+                fontSize = 12.sp
+            )
+        }
+    }
+}
 
-
+@Composable
+private fun InsightCard(
+    title: String,
+    content: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = CardBg),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = title,
+                color = TextSecondary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = content,
+                color = TextPrimary,
+                fontSize = 14.sp,
+                lineHeight = 21.sp,
+                maxLines = 8,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
